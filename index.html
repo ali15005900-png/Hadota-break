@@ -1,0 +1,200 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hadota Break</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101820;color:white;font-family:Arial}
+header{background:#1c3040;text-align:center;padding:22px}
+h1{color:#f5c66c;margin:0}
+main{max-width:650px;margin:auto;padding:12px}
+.card,.employee{background:#20303e;border-radius:13px;padding:15px;margin:12px 0}
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.number{font-size:25px;color:#f5c66c;font-weight:bold}
+small{color:#bbb}
+input{width:100%;padding:12px;border-radius:8px;background:#101820;color:white;border:1px solid #526273;margin:7px 0}
+button{border:0;border-radius:8px;padding:12px;margin:4px;font-weight:bold;font-size:14px}
+.start{background:#279c60;color:white}
+.end{background:#bd4545;color:white}
+.collect{background:#d39b36;color:#111}
+.whatsapp{background:#168b50;color:white}
+button:disabled{opacity:.4}
+.employee h3{color:#f5c66c}
+.status{background:#101820;border-radius:8px;padding:10px;margin:8px 0}
+.timer{font-size:23px;color:#f5c66c;font-weight:bold}
+.late{color:#ff7777;font-weight:bold}
+.good{color:#54d78b}
+.actions{display:flex;gap:4px}
+.actions button{flex:1}
+h2{font-size:18px;color:#f5c66c}
+.report{white-space:pre-line;line-height:1.8}
+footer{text-align:center;color:#888;padding:20px}
+</style>
+</head>
+<body>
+<header>
+<h1>☕ Hadota Break</h1>
+<p>نظام متابعة بريكات الموظفين</p>
+</header>
+<main>
+<div class="card">
+<h2>📅 متابعة اليوم</h2>
+<div id="date"></div>
+<div class="summary">
+<div class="card"><small>عدد الموظفين</small><div class="number">9</div></div>
+<div class="card"><small>البريكات الحالية</small><div class="number" id="activeCount">0</div></div>
+<div class="card"><small>إجمالي التحصيل</small><div class="number" id="collected">0</div></div>
+<div class="card"><small>إجمالي التأخير</small><div class="number" id="totalLate">0</div></div>
+</div>
+</div>
+<div id="employees"></div>
+<div class="card">
+<h2>📊 التقرير اليومي</h2>
+<div class="report" id="dailyStats"></div>
+<button class="whatsapp" onclick="sendDaily()">إرسال التقرير اليومي واتساب</button>
+</div>
+</main>
+<footer>Hadota Cafe ☕</footer>
+<script>
+const KEY="hadota_break_v1",LIMIT=60,FEE=50;
+let data;
+try{data=JSON.parse(localStorage.getItem(KEY))||{}}
+catch(e){data={}}
+if(!Array.isArray(data.names)||data.names.length!==9)
+data.names=Array.from({length:9},(_,i)=>"موظف "+(i+1));
+if(!data.days)data.days={};
+
+function today(){
+let d=new Date();
+return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function getDay(){
+let d=today();
+if(!data.days[d])data.days[d]={employees:Array.from({length:9},()=>({breaks:[],collected:false}))};
+return data.days[d];
+}
+function currentTime(t){
+return new Date(t).toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});
+}
+function duration(a,b){return Math.max(0,Math.floor((b-a)/60000))}
+function formatMinutes(n){return Math.floor(n/60)+" ساعة و "+(n%60)+" دقيقة"}
+function safe(s){
+return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function stats(){
+let active=0,late=0,collected=0;
+getDay().employees.forEach(e=>{
+if(e.breaks.some(b=>!b.end))active++;
+e.breaks.forEach(b=>{
+late+=Math.max(0,duration(b.start,b.end||Date.now())-LIMIT);
+});
+if(e.collected)collected+=FEE;
+});
+return{active,late,collected};
+}
+function render(){
+let day=getDay();
+document.getElementById("date").textContent="التاريخ: "+new Date().toLocaleDateString("ar-EG");
+let s=stats();
+activeCount.textContent=s.active;
+collected.textContent=s.collected+" جنيه";
+totalLate.textContent=s.late+" دقيقة";
+let html="";
+day.employees.forEach((e,i)=>{
+let active=e.breaks.find(b=>!b.end);
+let total=e.breaks.reduce((v,b)=>v+duration(b.start,b.end||Date.now()),0);
+let late=e.breaks.reduce((v,b)=>v+Math.max(0,duration(b.start,b.end||Date.now())-LIMIT),0);
+html+=`
+<div class="employee">
+<h3>👤 ${safe(data.names[i])}</h3>
+<input value="${safe(data.names[i])}" onchange="rename(${i},this.value)" placeholder="اسم الموظف">
+<div class="status">
+حالة البريك:
+<strong class="${active?'late':'good'}">${active?'في البريك':'ليس في البريك'}</strong>
+${active?`
+<p>وقت البداية: ${currentTime(active.start)}</p>
+<div class="timer">${formatMinutes(duration(active.start,Date.now()))}</div>
+<div class="${duration(active.start,Date.now())>LIMIT?'late':'good'}">
+${duration(active.start,Date.now())>LIMIT?'تجاوز المدة المسموحة':'متبقي '+formatMinutes(Math.max(0,LIMIT-duration(active.start,Date.now())))}
+</div>`:'لا يوجد بريك حاليًا'}
+</div>
+<div>إجمالي مدة البريكات: <b>${formatMinutes(total)}</b></div>
+<div>إجمالي التأخير: <b class="${late?'late':'good'}">${late} دقيقة</b></div>
+<div>التحصيل: <b>${e.collected?'50 جنيه تم التحصيل':'لم يتم التحصيل'}</b></div>
+<div class="actions">
+<button class="start" onclick="startBreak(${i})" ${active?'disabled':''}>بدء البريك</button>
+<button class="end" onclick="endBreak(${i})" ${!active?'disabled':''}>إنهاء البريك</button>
+</div>
+<div class="actions">
+<button class="collect" onclick="collect(${i})" ${e.collected?'disabled':''}>${e.collected?'تم التحصيل':'تحصيل 50 جنيه'}</button>
+<button class="whatsapp" onclick="sendEmployee(${i})">تقرير واتساب</button>
+</div>
+</div>`;
+});
+document.getElementById("employees").innerHTML=html;
+document.getElementById("dailyStats").textContent=
+"عدد الموظفين: 9\nالبريكات الحالية: "+s.active+
+"\nإجمالي التحصيل: "+s.collected+" جنيه\nإجمالي التأخير: "+s.late+" دقيقة";
+}
+function rename(i,n){
+if(n.trim())data.names[i]=n.trim();
+save();render();
+}
+function startBreak(i){
+let e=getDay().employees[i];
+if(e.breaks.some(b=>!b.end))return;
+e.breaks.push({start:Date.now(),end:null});
+save();render();
+}
+function endBreak(i){
+let b=getDay().employees[i].breaks.find(b=>!b.end);
+if(!b)return;
+b.end=Date.now();save();render();
+}
+function collect(i){
+let e=getDay().employees[i];
+if(e.collected)return;
+if(!confirm("تأكيد تحصيل 50 جنيه من "+data.names[i]+"؟"))return;
+e.collected=true;e.collectionTime=Date.now();
+save();render();
+}
+function employeeReport(i){
+let e=getDay().employees[i],total=0,late=0,details="";
+e.breaks.forEach((b,n)=>{
+let mins=duration(b.start,b.end||Date.now());
+let delay=Math.max(0,mins-LIMIT);
+total+=mins;late+=delay;
+details+="\nالبريك "+(n+1)+
+"\nوقت البداية: "+currentTime(b.start)+
+"\nوقت النهاية: "+(b.end?currentTime(b.end):"مستمر")+
+"\nالمدة: "+formatMinutes(mins)+
+"\nالتأخير: "+delay+" دقيقة\n";
+});
+return "☕ تقرير بريكات حدوته\nالموظف: "+data.names[i]+
+"\nالتاريخ: "+today()+"\nعدد البريكات: "+e.breaks.length+
+details+"\nإجمالي مدة البريكات: "+formatMinutes(total)+
+"\nإجمالي التأخير: "+late+" دقيقة"+
+"\nالتحصيل: "+(e.collected?"50 جنيه تم تحصيلها":"لم يتم التحصيل");
+}
+function sendEmployee(i){
+window.open("https://wa.me/?text="+encodeURIComponent(employeeReport(i)),"_blank");
+}
+function sendDaily(){
+let s=stats();
+let msg="☕ تقرير بريكات حدوته\nالتاريخ: "+today()+
+"\nعدد الموظفين: 9\nإجمالي التحصيل: "+s.collected+
+" جنيه\nإجمالي التأخير: "+s.late+" دقيقة\n\n";
+getDay().employees.forEach((e,i)=>{
+msg+=data.names[i]+": "+(e.collected?"تم تحصيل 50 جنيه":"لم يتم التحصيل")+"\n";
+});
+window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
+}
+render();
+setInterval(render,1000);
+</script>
+</body>
+</html>
