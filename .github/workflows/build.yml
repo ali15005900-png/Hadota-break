@@ -6,6 +6,7 @@ on:
   push:
     paths:
       - 'HadotaBreak-Android-Project.zip'
+      - 'index.html'
       - '.github/workflows/build.yml'
 
 jobs:
@@ -29,6 +30,9 @@ jobs:
 
       - name: Unpack Android project
         run: unzip -o HadotaBreak-Android-Project.zip
+
+      - name: Copy latest app
+        run: cp index.html hadota-project/app/src/main/assets/index.html
 
       - name: Build debug APK
         working-directory: hadota-project
